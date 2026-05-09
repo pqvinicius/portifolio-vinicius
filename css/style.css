@@ -389,6 +389,29 @@ p {
   margin-top: 0.5rem;
 }
 
+.experience-card .role-meta {
+  color: var(--text-primary);
+  font-weight: 700;
+  margin-top: 0.4rem;
+}
+
+.experience-card .role-bullets {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.9rem;
+  padding-left: 1.1rem;
+  color: var(--text-secondary);
+}
+
+.experience-card .role-bullets li::marker {
+  color: var(--accent);
+}
+
+.experience-card:first-child {
+  grid-column: 1 / -1;
+  border-color: var(--accent);
+}
+
 .project-card a {
   display: inline-block;
   font-weight: 700;
