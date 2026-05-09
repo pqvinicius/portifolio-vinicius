@@ -10,15 +10,18 @@ document.addEventListener("DOMContentLoaded", () => {
   const contactForm = document.getElementById("contactForm");
   const nameInput = document.getElementById("name");
   const emailInput = document.getElementById("email");
+  const subjectInput = document.getElementById("subject");
   const messageInput = document.getElementById("message");
+  const honeypotInput = document.getElementById("_gotcha");
   const successModal = document.getElementById("successModal");
   const closeModalButton = document.getElementById("closeModal");
-  const submitButton = contactForm.querySelector('button[type="submit"]');
+  const submitButton = document.getElementById("submitButton");
 
-  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const FORM_ENDPOINT = "https://formspree.io/f/mqengzab";
-  const SUBMIT_LABEL_DEFAULT = "Enviar mensagem";
-  const SUBMIT_LABEL_SENDING = "Enviando...";
+  // Regex robusto para validação local. RFC 5322 completa não cabe em regex,
+  // mas este cobre a maioria dos casos reais e descarta erros comuns.
+  const EMAIL_PATTERN = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$/;
+  const MAX_EMAIL_LENGTH = 254;
 
   // Tema claro/escuro: aplica a preferência salva e mantém o ícone sincronizado.
   const applyTheme = (theme) => {
@@ -103,46 +106,100 @@ document.addEventListener("DOMContentLoaded", () => {
 
   sections.forEach((section) => sectionObserver.observe(section));
 
-  // Validação do formulário: mostra erros por campo e simula o envio com modal.
-  const setError = (fieldId, message) => {
-    const errorElement = document.getElementById(`${fieldId}Error`);
-    errorElement.textContent = message;
+  // Validação do formulário: mensagens inline + estado visual do campo.
+  const fieldsToValidate = [
+    { input: nameInput, errorId: "nameError" },
+    { input: emailInput, errorId: "emailError" },
+    { input: subjectInput, errorId: "subjectError" },
+    { input: messageInput, errorId: "messageError" },
+  ];
+
+  const setFieldError = (input, errorId, message) => {
+    const errorElement = document.getElementById(errorId);
+    errorElement.textContent = message || "";
+    input.classList.toggle("is-invalid", Boolean(message));
+    input.setAttribute("aria-invalid", message ? "true" : "false");
   };
 
   const clearErrors = () => {
-    setError("name", "");
-    setError("email", "");
-    setError("message", "");
+    fieldsToValidate.forEach(({ input, errorId }) => setFieldError(input, errorId, ""));
+  };
+
+  // Validação granular do e-mail: separa razões para feedback claro ao usuário.
+  const validateEmail = (email) => {
+    if (!email) {
+      return "Informe seu e-mail.";
+    }
+
+    if (email.length > MAX_EMAIL_LENGTH) {
+      return "E-mail muito longo.";
+    }
+
+    if (email.includes("..")) {
+      return "E-mail contém pontos consecutivos.";
+    }
+
+    if (!EMAIL_PATTERN.test(email)) {
+      return "Informe um e-mail válido (ex: nome@dominio.com).";
+    }
+
+    return "";
+  };
+
+  const validateField = (input) => {
+    const value = input.value.trim();
+
+    if (input === nameInput) {
+      if (!value) return "Informe seu nome.";
+      if (value.length < 2) return "Nome muito curto.";
+      return "";
+    }
+
+    if (input === emailInput) {
+      return validateEmail(value);
+    }
+
+    if (input === subjectInput) {
+      if (!value) return "Selecione um assunto.";
+      return "";
+    }
+
+    if (input === messageInput) {
+      if (!value) return "Escreva uma mensagem.";
+      if (value.length < 10) return "Mensagem muito curta (mínimo 10 caracteres).";
+      return "";
+    }
+
+    return "";
   };
 
   const validateForm = () => {
-    const name = nameInput.value.trim();
-    const email = emailInput.value.trim();
-    const message = messageInput.value.trim();
     let isValid = true;
 
-    clearErrors();
-
-    if (!name) {
-      setError("name", "Informe seu nome.");
-      isValid = false;
-    }
-
-    if (!email) {
-      setError("email", "Informe seu e-mail.");
-      isValid = false;
-    } else if (!emailPattern.test(email)) {
-      setError("email", "Informe um e-mail válido.");
-      isValid = false;
-    }
-
-    if (!message) {
-      setError("message", "Escreva uma mensagem.");
-      isValid = false;
-    }
+    fieldsToValidate.forEach(({ input, errorId }) => {
+      const message = validateField(input);
+      setFieldError(input, errorId, message);
+      if (message) isValid = false;
+    });
 
     return isValid;
   };
+
+  // Validação em tempo real: feedback ao sair do campo, e limpa ao voltar a digitar.
+  fieldsToValidate.forEach(({ input, errorId }) => {
+    input.addEventListener("blur", () => {
+      const message = validateField(input);
+      setFieldError(input, errorId, message);
+    });
+
+    const liveEvent = input.tagName === "SELECT" ? "change" : "input";
+    input.addEventListener(liveEvent, () => {
+      if (input.classList.contains("is-invalid")) {
+        const message = validateField(input);
+        setFieldError(input, errorId, message);
+      }
+    });
+  });
 
   const openModal = () => {
     successModal.classList.remove("hidden");
@@ -153,13 +210,18 @@ document.addEventListener("DOMContentLoaded", () => {
     successModal.classList.add("hidden");
   };
 
-  // Estado do botão durante o envio: evita duplo submit e dá feedback visual.
+  // Estado do botão durante o envio: evita duplo submit, spinner e aria-busy.
   const setSubmitting = (isSubmitting) => {
     submitButton.disabled = isSubmitting;
-    submitButton.textContent = isSubmitting ? SUBMIT_LABEL_SENDING : SUBMIT_LABEL_DEFAULT;
+    submitButton.classList.toggle("is-loading", isSubmitting);
+    submitButton.setAttribute("aria-busy", isSubmitting ? "true" : "false");
+    const label = submitButton.querySelector(".btn-label");
+    if (label) {
+      label.textContent = isSubmitting ? "Enviando..." : "Enviar mensagem";
+    }
   };
 
-  // Envio real via Formspree (POST + JSON). Em caso de falha, exibe erro inline.
+  // Envio real via Formspree (POST + JSON). Lança erro com status para tratamento granular.
   const sendForm = async (payload) => {
     const response = await fetch(FORM_ENDPOINT, {
       method: "POST",
@@ -171,7 +233,14 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     if (!response.ok) {
-      throw new Error(`Falha no envio (HTTP ${response.status}).`);
+      const error = new Error(`Falha no envio (HTTP ${response.status}).`);
+      error.status = response.status;
+      try {
+        error.body = await response.json();
+      } catch (_) {
+        error.body = null;
+      }
+      throw error;
     }
 
     return response.json();
@@ -184,11 +253,20 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    // Honeypot: se preenchido, é bot. Mostra modal de sucesso e descarta silenciosamente.
+    if (honeypotInput && honeypotInput.value.trim() !== "") {
+      contactForm.reset();
+      openModal();
+      return;
+    }
+
+    const subjectValue = subjectInput.value.trim();
     const payload = {
       name: nameInput.value.trim(),
       email: emailInput.value.trim(),
+      subject: subjectValue,
       message: messageInput.value.trim(),
-      _subject: "Nova mensagem pelo portfólio",
+      _subject: `Portfólio - ${subjectValue}`,
     };
 
     setSubmitting(true);
@@ -198,10 +276,21 @@ document.addEventListener("DOMContentLoaded", () => {
       contactForm.reset();
       openModal();
     } catch (error) {
-      setError(
-        "message",
-        "Não foi possível enviar agora. Tente novamente em instantes ou fale comigo pelo LinkedIn ou WhatsApp."
-      );
+      // Formspree retorna 422 quando rejeita o payload, geralmente por e-mail inválido.
+      if (error.status === 422) {
+        setFieldError(
+          emailInput,
+          "emailError",
+          "O servidor recusou o e-mail. Verifique se ele está correto."
+        );
+        emailInput.focus();
+      } else {
+        setFieldError(
+          messageInput,
+          "messageError",
+          "Não foi possível enviar agora. Tente novamente em instantes ou fale comigo pelo LinkedIn ou WhatsApp."
+        );
+      }
     } finally {
       setSubmitting(false);
     }
