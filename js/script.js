@@ -13,8 +13,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const messageInput = document.getElementById("message");
   const successModal = document.getElementById("successModal");
   const closeModalButton = document.getElementById("closeModal");
+  const submitButton = contactForm.querySelector('button[type="submit"]');
 
   const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const FORM_ENDPOINT = "https://formspree.io/f/mqengzab";
+  const SUBMIT_LABEL_DEFAULT = "Enviar mensagem";
+  const SUBMIT_LABEL_SENDING = "Enviando...";
 
   // Tema claro/escuro: aplica a preferência salva e mantém o ícone sincronizado.
   const applyTheme = (theme) => {
@@ -149,15 +153,58 @@ document.addEventListener("DOMContentLoaded", () => {
     successModal.classList.add("hidden");
   };
 
-  contactForm.addEventListener("submit", (event) => {
+  // Estado do botão durante o envio: evita duplo submit e dá feedback visual.
+  const setSubmitting = (isSubmitting) => {
+    submitButton.disabled = isSubmitting;
+    submitButton.textContent = isSubmitting ? SUBMIT_LABEL_SENDING : SUBMIT_LABEL_DEFAULT;
+  };
+
+  // Envio real via Formspree (POST + JSON). Em caso de falha, exibe erro inline.
+  const sendForm = async (payload) => {
+    const response = await fetch(FORM_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Falha no envio (HTTP ${response.status}).`);
+    }
+
+    return response.json();
+  };
+
+  contactForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
     if (!validateForm()) {
       return;
     }
 
-    contactForm.reset();
-    openModal();
+    const payload = {
+      name: nameInput.value.trim(),
+      email: emailInput.value.trim(),
+      message: messageInput.value.trim(),
+      _subject: "Nova mensagem pelo portfólio",
+    };
+
+    setSubmitting(true);
+
+    try {
+      await sendForm(payload);
+      contactForm.reset();
+      openModal();
+    } catch (error) {
+      setError(
+        "message",
+        "Não foi possível enviar agora. Tente novamente em instantes ou fale comigo pelo LinkedIn ou WhatsApp."
+      );
+    } finally {
+      setSubmitting(false);
+    }
   });
 
   closeModalButton.addEventListener("click", closeModal);
