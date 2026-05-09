@@ -23,6 +23,6 @@ Portfólio pessoal desenvolvido para a disciplina Fundamentos da Programação W
 
 ## Deploy
 
-URL planejada para GitHub Pages:
+Site publicado no GitHub Pages:
 
-https://pqvinicius.github.io/portfolio-vinicius/
+[https://pqvinicius.github.io/portifolio-vinicius/](https://pqvinicius.github.io/portifolio-vinicius/)
